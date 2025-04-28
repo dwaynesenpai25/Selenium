@@ -36,6 +36,14 @@ class Dar():
         self.status_text = self.expander.text("Initializing...")
         self.progress_placeholder = self.expander.empty()
 
+    def block_new_tab(self):
+        self.driver.execute_script("""
+            window.open = function() {
+                console.log('Blocked window.open attempt');
+                return null;
+            };
+        """)
+
     def click_element_by_CSS(self, path):
         try:
             WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.CSS_SELECTOR, path))).click()
@@ -48,20 +56,30 @@ class Dar():
         except Exception as e:
             self.expander.error(f"Failed to click element with XPATH {path}: {e}")
 
+    def escape_xpath_text(self,text):
+        """Escape apostrophes in a string for use in an XPath expression."""
+        if "'" not in text:
+            return f"'{text}'"
+        parts = text.split("'")
+        return "concat(" + ", \"'\", ".join(f"'{part}'" for part in parts) + ")"
+    
     def normalize_option_text(self, text):
-        cleaned_text = re.sub(r"[-\u2013\u2014]", "-", text.strip())
-        return " ".join(cleaned_text.split())
-
+        # Replace curly quotes and long dashes
+        text = text.replace("’", "'")
+        text = re.sub(r"[-\u2013\u2014]", "-", text.strip())
+        return " ".join(text.split())
+    
     def click_option(self, text):
         normalized_text = self.normalize_option_text(text)
         print(f"Attempting to click option: {normalized_text}")
+        escaped_text = self.escape_xpath_text(normalized_text)
+        xpath = f"//div[@role='listbox']//span[contains(normalize-space(text()), {escaped_text})]"
+        print(f"XPath used: {xpath}")
         try:
             option = WebDriverWait(self.driver, 10).until(
-                EC.element_to_be_clickable((
-                    By.XPATH,
-                    f"//div[@role='listbox']//span[contains(normalize-space(text()), '{normalized_text}')]"
-                ))
+                EC.element_to_be_clickable((By.XPATH, xpath))
             )
+            print(f"Option HTML: {option.get_attribute('outerHTML')}")
             option.click()
             print(f"Successfully selected option: {normalized_text}")
         except Exception as e:
@@ -91,6 +109,7 @@ class Dar():
         self.click_element_by_CSS('button[data-automation-id="nextButton"]')
 
     def iat(self, acc_type, loan_acc_num, unit, acc_num, endo_date, transac, report_sub): 
+        self.block_new_tab()
         question_items = self.driver.find_elements(By.CSS_SELECTOR, 'div[data-automation-id="questionItem"]')
 
         for question_item in question_items:
@@ -135,7 +154,7 @@ class Dar():
 
     def dar(self, act, c_num, with_contact, contact_type, new_email, new_num, client_type, nego_remarks, nego_stat, ptp, ptp_amount, reason_dar):  
         wait = WebDriverWait(self.driver, 5)  
-
+        self.block_new_tab()
         question_items = self.driver.find_elements(By.CSS_SELECTOR, 'div[data-automation-id="questionItem"]')
 
         for question_item in question_items:
@@ -190,10 +209,10 @@ class Dar():
                         question_items[-1].find_element(By.CSS_SELECTOR, 'div div div div[aria-haspopup="listbox"]').click()
                         self.click_option(nego_stat)
 
-                        if nego_stat in ["NEGO - No Commitment To Pay","PTPB - Promised-to-Pay", "PTVS - Promised-to-Voluntary Surrender"]:
+                        if nego_stat in ["NEGO – No Commitment To Pay","PTPB – Promised-to-Pay", "PTVS - Promised-to-Voluntary Surrender"]:
                             wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, 'div[data-automation-id="questionItem"]')))
                             question_items = self.driver.find_elements(By.CSS_SELECTOR, 'div[data-automation-id="questionItem"]') 
-
+                        
                             question_items[-5].find_element(By.CSS_SELECTOR, 'div div div div[aria-haspopup="listbox"]').click()
                             normalized_text = self.normalize_option_text(reason_dar) 
                             self.click_option(normalized_text)
@@ -207,7 +226,6 @@ class Dar():
                             input.send_keys(ptp_amount)
 
                             input_field = question_items[-2].find_element(By.CSS_SELECTOR, 'div div span textarea')
-                            input_field.clear()
                             input_field.send_keys(nego_remarks)
 
                             question_items[-1].find_element(By.CSS_SELECTOR, 'div div div div[aria-haspopup="listbox"]').click()
@@ -228,6 +246,7 @@ class Dar():
                                 input_value = new_email if contact_type == "Email Address" else new_num
                                 input_field.send_keys(input_value)
                         else:
+
                             wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, 'div[data-automation-id="questionItem"]')))
                             question_items = self.driver.find_elements(By.CSS_SELECTOR, 'div[data-automation-id="questionItem"]') 
 

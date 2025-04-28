@@ -37,6 +37,7 @@ def main():
                 try:
                     df_skips = pd.read_excel(uploaded_file_skips)
                     df_skips = df_skips.astype(str)
+                    st.write("Dataframe for Skips:", df_skips)
 
                     st.write("Skips Automation started...")
                     start = Skips()

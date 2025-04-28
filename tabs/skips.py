@@ -7,7 +7,7 @@ from datetime import datetime
 import re
 from selenium.webdriver.chrome.options import Options
 import streamlit as st
-
+import html
 class Skips():
     
     def __init__(self):
@@ -48,25 +48,60 @@ class Skips():
         except Exception as e:
             self.expander.error(f"Failed to click element with XPATH {path}: {e}")
 
+    def escape_xpath_text(self,text):
+        """Escape apostrophes in a string for use in an XPath expression."""
+        if "'" not in text:
+            return f"'{text}'"
+        parts = text.split("'")
+        return "concat(" + ", \"'\", ".join(f"'{part}'" for part in parts) + ")"
+    
     def normalize_option_text(self, text):
-        cleaned_text = re.sub(r"[-\u2013\u2014]", "-", text.strip())
-        return " ".join(cleaned_text.split())
+        # Replace curly quotes and long dashes
+        text = text.replace("’", "'")
+        text = re.sub(r"[-\u2013\u2014]", "-", text.strip())
+        return " ".join(text.split())
+    
+    # def click_option(self, text):
+    #     normalized_text = self.normalize_option_text(text)
+    #     print(f"Attempting to click option: {normalized_text}")
+
+    #     escaped_text = self.escape_xpath_text(normalized_text)
+    #     # xpath = f"//div[@role='listbox']//span[contains(normalize-space(text()), {escaped_text})]"
+    #     xpath = f"//div[@role='listbox']//span[contains(@aria-label, {escaped_text})]"
+    #     print(f"XPath used: {xpath}")
+
+    #     try:
+    #         option = WebDriverWait(self.driver, 10).until(
+    #             EC.element_to_be_clickable((By.XPATH, xpath))
+    #         )
+    #         option.click()
+    #         print(f"Successfully selected option: {normalized_text}")
+    #     except Exception as e:
+    #         self.expander.error(f"Failed to select option {normalized_text}: {str(e)}")
+    #         raise
 
     def click_option(self, text):
         normalized_text = self.normalize_option_text(text)
         print(f"Attempting to click option: {normalized_text}")
+
+        escaped_text = self.escape_xpath_text(normalized_text)
+
+        # 👉 Insert this small fix here:
+        # Replace normal spaces with a pattern that matches any space (regular OR &nbsp;)
+        xpath = f"""//div[@role='listbox']//span[contains(translate(normalize-space(text()), '\u00A0', ' '), {escaped_text})]"""
+
+        print(f"XPath used: {xpath}")
+
         try:
             option = WebDriverWait(self.driver, 10).until(
-                EC.element_to_be_clickable((
-                    By.XPATH,
-                    f"//div[@role='listbox']//span[contains(normalize-space(text()), '{normalized_text}')]"
-                ))
+                EC.element_to_be_clickable((By.XPATH, xpath))
             )
             option.click()
             print(f"Successfully selected option: {normalized_text}")
         except Exception as e:
             self.expander.error(f"Failed to select option {normalized_text}: {str(e)}")
             raise
+
 
     def external(self, agency, email): 
         print("testing started")
@@ -177,28 +212,35 @@ class Skips():
                             question_items[-1].find_element(By.CSS_SELECTOR, 'div div div div[aria-haspopup="listbox"]').click()
                             self.click_option(fv_unit)
                             
-                            wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, 'div[data-automation-id="questionItem"]')))
-                            question_items = self.driver.find_elements(By.CSS_SELECTOR, 'div[data-automation-id="questionItem"]')
-                        
-                            question_items[-1].find_element(By.CSS_SELECTOR, 'div div div div[aria-haspopup="listbox"]').click()
-                            self.click_option(w_brgy)
-                
-                            wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, 'div[data-automation-id="questionItem"]')))
-                            question_items = self.driver.find_elements(By.CSS_SELECTOR, 'div[data-automation-id="questionItem"]')
+                            if fv_unit != "Positive Unit (Seen in the address visited)":
+                                wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, 'div[data-automation-id="questionItem"]')))
+                                question_items = self.driver.find_elements(By.CSS_SELECTOR, 'div[data-automation-id="questionItem"]')
                             
-                        
-                            if w_brgy == 'Yes':
-                                input_field = question_items[-2].find_element(By.CSS_SELECTOR, 'div div span textarea')
-                                input_field.clear()
-                                input_field.send_keys(brgy_remark)
+                                question_items[-1].find_element(By.CSS_SELECTOR, 'div div div div[aria-haspopup="listbox"]').click()
+                                self.click_option(w_brgy)
                     
-                                input_field = question_items[-1].find_element(By.CSS_SELECTOR, 'div div span textarea')
-                                input_field.clear()
-                                input_field.send_keys(fv_remarks)
+                                wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, 'div[data-automation-id="questionItem"]')))
+                                question_items = self.driver.find_elements(By.CSS_SELECTOR, 'div[data-automation-id="questionItem"]')
+                                
+                                if w_brgy == 'Yes':
+                                    input_field = question_items[-2].find_element(By.CSS_SELECTOR, 'div div span textarea')
+                                    input_field.clear()
+                                    input_field.send_keys(brgy_remark)
+                        
+                                    input_field = question_items[-1].find_element(By.CSS_SELECTOR, 'div div span textarea')
+                                    input_field.clear()
+                                    input_field.send_keys(fv_remarks)
+                                else:
+                                    input_field = question_items[-1].find_element(By.CSS_SELECTOR, 'div div span textarea')
+                                    input_field.clear()
+                                    input_field.send_keys(fv_remarks)
                             else:
+                                wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, 'div[data-automation-id="questionItem"]')))
+                                question_items = self.driver.find_elements(By.CSS_SELECTOR, 'div[data-automation-id="questionItem"]')
                                 input_field = question_items[-1].find_element(By.CSS_SELECTOR, 'div div span textarea')
                                 input_field.clear()
                                 input_field.send_keys(fv_remarks)
+
                         else:
                             print(ptp_date)
                             input = question_items[-2].find_element(By.CSS_SELECTOR, 'div div div div div div input')
@@ -208,26 +250,32 @@ class Skips():
                         
                             question_items[-1].find_element(By.CSS_SELECTOR, 'div div div div[aria-haspopup="listbox"]').click()
                             self.click_option(fv_unit)
+
+                            if fv_unit != "Positive Unit (Seen in the address visited)":
+                                wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, 'div[data-automation-id="questionItem"]')))
+                                question_items = self.driver.find_elements(By.CSS_SELECTOR, 'div[data-automation-id="questionItem"]')
                             
-                            wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, 'div[data-automation-id="questionItem"]')))
-                            question_items = self.driver.find_elements(By.CSS_SELECTOR, 'div[data-automation-id="questionItem"]')
-                        
-                            question_items[-1].find_element(By.CSS_SELECTOR, 'div div div div[aria-haspopup="listbox"]').click()
-                            self.click_option(w_brgy)
-                            
-                            wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, 'div[data-automation-id="questionItem"]')))
-                            question_items = self.driver.find_elements(By.CSS_SELECTOR, 'div[data-automation-id="questionItem"]')
-                            
-                        
-                            if w_brgy == 'Yes':
-                                input_field = question_items[-2].find_element(By.CSS_SELECTOR, 'div div span textarea')
-                                input_field.clear()
-                                input_field.send_keys(brgy_remark)
+                                question_items[-1].find_element(By.CSS_SELECTOR, 'div div div div[aria-haspopup="listbox"]').click()
+                                self.click_option(w_brgy)
                                 
-                                input_field = question_items[-1].find_element(By.CSS_SELECTOR, 'div div span textarea')
-                                input_field.clear()
-                                input_field.send_keys(fv_remarks)
+                                wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, 'div[data-automation-id="questionItem"]')))
+                                question_items = self.driver.find_elements(By.CSS_SELECTOR, 'div[data-automation-id="questionItem"]')
+                                
+                                if w_brgy == 'Yes':
+                                    input_field = question_items[-2].find_element(By.CSS_SELECTOR, 'div div span textarea')
+                                    input_field.clear()
+                                    input_field.send_keys(brgy_remark)
+                                    
+                                    input_field = question_items[-1].find_element(By.CSS_SELECTOR, 'div div span textarea')
+                                    input_field.clear()
+                                    input_field.send_keys(fv_remarks)
+                                else:
+                                    input_field = question_items[-1].find_element(By.CSS_SELECTOR, 'div div span textarea')
+                                    input_field.clear()
+                                    input_field.send_keys(fv_remarks)
                             else:
+                                wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, 'div[data-automation-id="questionItem"]')))
+                                question_items = self.driver.find_elements(By.CSS_SELECTOR, 'div[data-automation-id="questionItem"]')
                                 input_field = question_items[-1].find_element(By.CSS_SELECTOR, 'div div span textarea')
                                 input_field.clear()
                                 input_field.send_keys(fv_remarks)
@@ -262,28 +310,35 @@ class Skips():
                             question_items[-1].find_element(By.CSS_SELECTOR, 'div div div div[aria-haspopup="listbox"]').click()
                             self.click_option(fv_unit)
                             
-                            wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, 'div[data-automation-id="questionItem"]')))
-                            question_items = self.driver.find_elements(By.CSS_SELECTOR, 'div[data-automation-id="questionItem"]')
-                        
-                            question_items[-1].find_element(By.CSS_SELECTOR, 'div div div div[aria-haspopup="listbox"]').click()
-                            self.click_option(w_brgy)
+                            if fv_unit != "Positive Unit (Seen in the address visited)":
+                                wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, 'div[data-automation-id="questionItem"]')))
+                                question_items = self.driver.find_elements(By.CSS_SELECTOR, 'div[data-automation-id="questionItem"]')
                             
-                            wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, 'div[data-automation-id="questionItem"]')))
-                            question_items = self.driver.find_elements(By.CSS_SELECTOR, 'div[data-automation-id="questionItem"]')
-                            
-                        
-                            if w_brgy == 'Yes':
-                                input_field = question_items[-2].find_element(By.CSS_SELECTOR, 'div div span textarea')
-                                input_field.clear()
-                                input_field.send_keys(brgy_remark)
+                                question_items[-1].find_element(By.CSS_SELECTOR, 'div div div div[aria-haspopup="listbox"]').click()
+                                self.click_option(w_brgy)
                                 
-                                input_field = question_items[-1].find_element(By.CSS_SELECTOR, 'div div span textarea')
-                                input_field.clear()
-                                input_field.send_keys(fv_remarks)
+                                wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, 'div[data-automation-id="questionItem"]')))
+                                question_items = self.driver.find_elements(By.CSS_SELECTOR, 'div[data-automation-id="questionItem"]')
+                                
+                                if w_brgy == 'Yes':
+                                    input_field = question_items[-2].find_element(By.CSS_SELECTOR, 'div div span textarea')
+                                    input_field.clear()
+                                    input_field.send_keys(brgy_remark)
+                                    
+                                    input_field = question_items[-1].find_element(By.CSS_SELECTOR, 'div div span textarea')
+                                    input_field.clear()
+                                    input_field.send_keys(fv_remarks)
+                                else:
+                                    input_field = question_items[-1].find_element(By.CSS_SELECTOR, 'div div span textarea')
+                                    input_field.clear()
+                                    input_field.send_keys(fv_remarks)
                             else:
+                                wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, 'div[data-automation-id="questionItem"]')))
+                                question_items = self.driver.find_elements(By.CSS_SELECTOR, 'div[data-automation-id="questionItem"]')
                                 input_field = question_items[-1].find_element(By.CSS_SELECTOR, 'div div span textarea')
                                 input_field.clear()
                                 input_field.send_keys(fv_remarks)
+
                         else:
                             input = question_items[-2].find_element(By.CSS_SELECTOR, 'div div div div div div input')
                             input.clear()
@@ -320,7 +375,7 @@ class Skips():
                                 input_field.clear()
                                 input_field.send_keys(fv_remarks)  
 
-                    self.click_element_by_CSS('button[data-automation-id="submitButton"]')
+        self.click_element_by_CSS('button[data-automation-id="submitButton"]')
                     
     def main(self, df):
         print("Starting main process")
